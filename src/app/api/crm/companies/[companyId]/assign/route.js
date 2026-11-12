@@ -6,14 +6,14 @@ import {
 } from "../../../../../../lib/crmServerStore";
 
 export async function PATCH(request, { params }) {
-  const user = getAuthenticatedUser(request);
+  const user = await getAuthenticatedUser(request);
   if (!user || user.role !== "super_manager") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   const { companyId } = params;
   const body = await request.json();
-  const state = loadStore();
+  const state = await loadStore();
   let updated = null;
 
   state.companies = state.companies.map((c) => {
@@ -32,7 +32,7 @@ export async function PATCH(request, { params }) {
     );
   }
 
-  saveStore(state);
+  await saveStore(state);
   if (!updated) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 });
   }

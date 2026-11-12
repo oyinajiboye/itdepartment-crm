@@ -6,14 +6,14 @@ import {
 } from "../../../../../lib/crmServerStore";
 
 export async function PATCH(request, { params }) {
-  const user = getAuthenticatedUser(request);
+  const user = await getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { ticketId } = params;
   const body = await request.json();
-  const state = loadStore();
+  const state = await loadStore();
   let updated = null;
 
   state.tickets = (state.tickets || []).map((t) => {
@@ -34,7 +34,7 @@ export async function PATCH(request, { params }) {
     return t;
   });
 
-  saveStore(state);
+  await saveStore(state);
   if (!updated) {
     return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
   }

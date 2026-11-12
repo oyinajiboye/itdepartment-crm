@@ -3,7 +3,7 @@ import { loadStore, saveStore } from "../../../lib/crmServerStore";
 
 export async function POST(request) {
   const body = await request.json();
-  const state = loadStore();
+  const state = await loadStore();
   const code = (body.company_code || "ITD-UNASSIGNED").trim().toUpperCase();
   const company = state.companies.find(
     (c) => c.company_code.toUpperCase() === code
@@ -15,18 +15,27 @@ export async function POST(request) {
     );
   }
   const manager = state.managers.find(
-    (m) => m.id === company.assigned_manager_id
+    (m) => String(m.id) === String(company.assigned_manager_id)
   );
+  const remoteId = body.remote_id || body.rustdesk_id || "";
+  const sysinfo =
+    body.sysinfo ||
+    `${body.os_version || "Windows 11 Pro"} (${body.hostname || "WIN-LAPTOP"})`;
+
   const deviceRecord = {
     device_id: body.device_id,
     company_code: company.company_code,
     employee_name: body.employee_name || body.hostname || "Employee",
     department: body.department || "General",
+    phone: body.phone || "",
     hostname: body.hostname || "WIN-LAPTOP",
     os_version: body.os_version || "Windows 11 Pro",
-    rustdesk_id: body.rustdesk_id || "Pending",
+    sysinfo,
+    remote_id: remoteId,
+    rustdesk_id: remoteId,
     ip_address: body.ip_address || "0.0.0.0",
     agent_version: body.agent_version || "1.2.0",
+    health_status: body.health_status || "Healthy",
     status: "online",
     last_seen: new Date().toISOString(),
   };
@@ -39,13 +48,14 @@ export async function POST(request) {
   } else {
     state.devices.unshift(deviceRecord);
   }
-  saveStore(state);
+  await saveStore(state);
 
   return NextResponse.json({
     enrolled: true,
     company_code: company.company_code,
     company_name: company.name,
     assigned_manager_id: company.assigned_manager_id,
+    assigned_it_manager: manager ? manager.name : "IT Operations Manager",
     assigned_manager_name: manager ? manager.name : "IT Operations Manager",
     device: deviceRecord,
   });

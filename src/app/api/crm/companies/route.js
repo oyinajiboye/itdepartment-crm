@@ -6,7 +6,7 @@ import {
 } from "../../../../lib/crmServerStore";
 
 export async function POST(request) {
-  const user = getAuthenticatedUser(request);
+  const user = await getAuthenticatedUser(request);
   if (!user || user.role !== "super_manager") {
     return NextResponse.json(
       { error: "Only the Super Manager can onboard client companies." },
@@ -15,7 +15,7 @@ export async function POST(request) {
   }
 
   const body = await request.json();
-  const state = loadStore();
+  const state = await loadStore();
 
   const name = (body.name || "").trim();
   if (!name) {
@@ -64,7 +64,7 @@ export async function POST(request) {
 
   state.companies.push(newCompany);
   state.onboarding_completed = true;
-  saveStore(state);
+  await saveStore(state);
 
   return NextResponse.json(newCompany);
 }

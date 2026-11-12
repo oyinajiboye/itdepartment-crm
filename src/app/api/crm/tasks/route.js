@@ -6,13 +6,13 @@ import {
 } from "../../../../lib/crmServerStore";
 
 export async function POST(request) {
-  const user = getAuthenticatedUser(request);
+  const user = await getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const body = await request.json();
-  const state = loadStore();
+  const state = await loadStore();
   const nextNum = String((state.hr_web_tasks || []).length + 1).padStart(2, "0");
 
   const newTask = {
@@ -27,6 +27,6 @@ export async function POST(request) {
   };
 
   state.hr_web_tasks.unshift(newTask);
-  saveStore(state);
+  await saveStore(state);
   return NextResponse.json(newTask);
 }

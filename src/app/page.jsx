@@ -69,6 +69,7 @@ export default function CRMPlatformPage() {
 
   // CRM Store & Workspace Navigation
   const [state, setState] = useState(INITIAL_CRM_DATA);
+  const [dbInfo, setDbInfo] = useState(null);
   const [activeView, setActiveView] = useState('overview');
   const [companyFilter, setCompanyFilter] = useState('ALL');
   const [copiedKey, setCopiedKey] = useState('');
@@ -118,6 +119,9 @@ export default function CRMPlatformPage() {
       const res = await fetch('/api/crm/bootstrap', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
+        if (data.database) {
+          setDbInfo(data.database);
+        }
         setState({
           managers: data.managers || [],
           companies: data.companies || [],
@@ -1258,6 +1262,13 @@ export default function CRMPlatformPage() {
               color: 'rgba(255,255,255,0.65)',
             }}
           >
+            <div style={{ fontFamily: 'var(--font-mono)', color: '#fff', marginBottom: 4 }}>
+              DATABASE ENGINE:{' '}
+              {dbInfo?.engine === 'postgresql' ? 'POSTGRESQL (LIVE)' : 'LOCAL PERSISTENT DB'}
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              {dbInfo?.mode || 'PostgreSQL / Persistent Local Store'}
+            </div>
             <div style={{ fontFamily: 'var(--font-mono)', color: '#fff', marginBottom: 4 }}>
               WINDOWS APP SYNC
             </div>

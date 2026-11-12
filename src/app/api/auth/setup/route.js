@@ -8,7 +8,7 @@ import {
 
 export async function POST(request) {
   const body = await request.json();
-  const state = loadStore();
+  const state = await loadStore();
 
   const hasSuperManager = state.managers.some(
     (m) => m.role === "super_manager"
@@ -53,7 +53,7 @@ export async function POST(request) {
   };
 
   state.managers.push(superManager);
-  saveStore(state);
+  await saveStore(state);
 
   const token = createSessionToken(superManager);
   const { password_hash, ...safeUser } = superManager;

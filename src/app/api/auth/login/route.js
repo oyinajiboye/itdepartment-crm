@@ -17,7 +17,7 @@ export async function POST(request) {
     );
   }
 
-  const state = loadStore();
+  const state = await loadStore();
   const manager = state.managers.find(
     (m) => m.email.toLowerCase() === email && m.status !== "suspended"
   );

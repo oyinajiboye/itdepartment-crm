@@ -6,14 +6,14 @@ import {
 } from "../../../../../lib/crmServerStore";
 
 export async function PATCH(request, { params }) {
-  const user = getAuthenticatedUser(request);
+  const user = await getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { taskId } = params;
   const body = await request.json();
-  const state = loadStore();
+  const state = await loadStore();
   let updated = null;
 
   state.hr_web_tasks = (state.hr_web_tasks || []).map((t) => {
@@ -24,7 +24,7 @@ export async function PATCH(request, { params }) {
     return t;
   });
 
-  saveStore(state);
+  await saveStore(state);
   if (!updated) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
   }

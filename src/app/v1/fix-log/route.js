@@ -3,7 +3,7 @@ import { loadStore, saveStore } from "../../../lib/crmServerStore";
 
 export async function POST(request) {
   const body = await request.json();
-  const state = loadStore();
+  const state = await loadStore();
   const entry = {
     id: `FIX-${1000 + state.fix_logs.length + 1}`,
     device_id: body.device_id,
@@ -11,14 +11,16 @@ export async function POST(request) {
     employee_name: body.employee_name || body.hostname || "Employee",
     hostname: body.hostname || "WIN-LAPTOP",
     fix_id: body.fix_id,
-    fix_title: body.fix_title,
+    fix_title: body.fix_title || body.fix_id,
     category: body.category || "System",
+    ok: body.ok !== undefined ? Boolean(body.ok) : true,
     status: body.status || "success",
+    output: body.output || body.details || "",
+    mode: body.mode || "online",
     duration_ms: Number(body.duration_ms) || 1200,
-    details: body.details || "",
     created_at: new Date().toISOString(),
   };
   state.fix_logs.unshift(entry);
-  saveStore(state);
-  return NextResponse.json({ logged: true, entry });
+  await saveStore(state);
+  return NextResponse.json({ logged: true, log_id: entry.id, entry });
 }

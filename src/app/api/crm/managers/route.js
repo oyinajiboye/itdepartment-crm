@@ -7,7 +7,7 @@ import {
 } from "../../../../lib/crmServerStore";
 
 export async function POST(request) {
-  const user = getAuthenticatedUser(request);
+  const user = await getAuthenticatedUser(request);
   if (!user || user.role !== "super_manager") {
     return NextResponse.json(
       { error: "Only the Super Manager can create IT Manager accounts." },
@@ -16,7 +16,7 @@ export async function POST(request) {
   }
 
   const body = await request.json();
-  const state = loadStore();
+  const state = await loadStore();
 
   const email = (body.email || "").trim().toLowerCase();
   const name = (body.name || "").trim();
@@ -56,7 +56,7 @@ export async function POST(request) {
   };
 
   state.managers.push(newManager);
-  saveStore(state);
+  await saveStore(state);
 
   const { password_hash, ...safeManager } = newManager;
   return NextResponse.json(safeManager);
