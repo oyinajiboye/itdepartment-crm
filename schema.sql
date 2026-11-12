@@ -116,3 +116,4 @@ CREATE INDEX IF NOT EXISTS idx_devices_company ON crm_devices(company_code);
 CREATE INDEX IF NOT EXISTS idx_fix_logs_company ON crm_fix_logs(company_code);
 CREATE INDEX IF NOT EXISTS idx_tickets_company ON crm_tickets(company_code);
 CREATE INDEX IF NOT EXISTS idx_hr_web_company ON crm_hr_web_tasks(company_code);
+
