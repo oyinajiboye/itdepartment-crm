@@ -1,18 +1,37 @@
 import { NextResponse } from "next/server";
-import { loadStore, saveStore } from "../../../../../../lib/crmServerStore";
+import {
+  loadStore,
+  saveStore,
+  getAuthenticatedUser,
+} from "../../../../../../lib/crmServerStore";
 
 export async function PATCH(request, { params }) {
+  const user = getAuthenticatedUser(request);
+  if (!user || user.role !== "super_manager") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
+
   const { companyId } = params;
   const body = await request.json();
   const state = loadStore();
   let updated = null;
+
   state.companies = state.companies.map((c) => {
-    if (c.id === companyId || c.company_code === companyId) {
+    if (String(c.id) === String(companyId) || c.company_code === companyId) {
       updated = { ...c, assigned_manager_id: body.assigned_manager_id };
       return updated;
     }
     return c;
   });
+
+  if (updated) {
+    state.tickets = (state.tickets || []).map((t) =>
+      t.company_code === updated.company_code && t.status !== "Resolved"
+        ? { ...t, assigned_manager_id: body.assigned_manager_id }
+        : t
+    );
+  }
+
   saveStore(state);
   if (!updated) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 });

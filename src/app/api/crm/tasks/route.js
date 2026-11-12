@@ -1,20 +1,31 @@
 import { NextResponse } from "next/server";
-import { loadStore, saveStore } from "../../../../lib/crmServerStore";
+import {
+  loadStore,
+  saveStore,
+  getAuthenticatedUser,
+} from "../../../../lib/crmServerStore";
 
 export async function POST(request) {
+  const user = getAuthenticatedUser(request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await request.json();
   const state = loadStore();
+  const nextNum = String((state.hr_web_tasks || []).length + 1).padStart(2, "0");
+
   const newTask = {
-    id: `TSK-30${state.hr_web_tasks.length + 1}`,
-    company_code: body.company_code,
-    task_type: body.task_type || "hr_onboarding",
-    title: body.title,
-    person_or_domain: body.person_or_domain || "",
-    status: "pending",
-    due_date: body.due_date || "Today",
-    assigned_to: body.assigned_to || "MGR-02",
+    id: `TSK-${nextNum}-${Date.now()}`,
+    company_code: (body.company_code || "").trim().toUpperCase(),
+    task_type: body.task_type || "HR Onboarding",
+    title: (body.title || "").trim(),
+    requested_by: (body.requested_by || body.person_or_domain || "").trim(),
+    status: "Pending",
+    assigned_to: body.assigned_to || user.id,
     created_at: new Date().toISOString(),
   };
+
   state.hr_web_tasks.unshift(newTask);
   saveStore(state);
   return NextResponse.json(newTask);
