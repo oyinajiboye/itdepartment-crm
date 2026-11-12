@@ -1,0 +1,17 @@
+{
+  "name": "itdepartment-crm-nextjs",
+  "version": "2.4.0",
+  "private": true,
+  "description": "IT Department Nigeria (itdepartment.ng) — Multi-Company B2B IT Operations & Endpoint CRM built with React and Next.js App Router",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^14.2.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

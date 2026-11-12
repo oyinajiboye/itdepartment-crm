@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 64" width="340" height="64" role="img" aria-label="IT Department">
+  <rect width="64" height="64" rx="14" fill="#0F300F"/>
+  <rect x="13" y="19" width="8" height="28" rx="2" fill="#FFFFFF"/>
+  <rect x="27" y="19" width="21" height="8" rx="2" fill="#FFFFFF"/>
+  <rect x="33.5" y="19" width="8" height="28" rx="2" fill="#FFFFFF"/>
+  <circle cx="51" cy="13" r="6" fill="#FFFFFF" stroke="#0F300F" stroke-width="3"/>
+  <text x="80" y="43" font-family="'Open Sauce One', 'Plus Jakarta Sans', Inter, sans-serif" font-size="31" font-weight="700" letter-spacing="-0.8" fill="#0A0A0A">IT <tspan fill="#0F300F">Department</tspan></text>
+</svg>
