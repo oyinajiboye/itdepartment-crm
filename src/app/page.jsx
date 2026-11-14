@@ -18,9 +18,9 @@ function generateCompanyCode(name, count) {
 }
 
 const PLAN_PRICES = {
-  'Starter Office SLA': { retainer: 150000, max_pcs: 15 },
-  'Growth Department SLA': { retainer: 300000, max_pcs: 40 },
-  'Enterprise Managed SLA': { retainer: 550000, max_pcs: 80 },
+  'Starter Office SLA': { retainer: 350000, max_pcs: 10 },
+  'Growth Department SLA': { retainer: 600000, max_pcs: 20 },
+  'Enterprise Managed SLA': { retainer: 0, max_pcs: 50 },
   '7-Day Free Office Pilot': { retainer: 0, max_pcs: 10 },
 };
 
@@ -56,8 +56,8 @@ export default function CRMPlatformPage() {
     name: '',
     industry: 'Corporate Enterprise',
     plan_tier: 'Growth Department SLA',
-    monthly_retainer: 300000,
-    max_pcs: 40,
+    monthly_retainer: 600000,
+    max_pcs: 20,
     domain_name: '',
     assigned_manager_id: '',
     ceo_contact: '',
@@ -97,8 +97,8 @@ export default function CRMPlatformPage() {
     company_code: '',
     industry: 'Corporate Enterprise',
     plan_tier: 'Growth Department SLA',
-    monthly_retainer: 300000,
-    max_pcs: 40,
+    monthly_retainer: 600000,
+    max_pcs: 20,
     assigned_manager_id: '',
     ceo_contact: '',
     hr_contact: '',
@@ -869,13 +869,13 @@ export default function CRMPlatformPage() {
                         }}
                       >
                         <option value="Starter Office SLA">
-                          Starter Office SLA (₦150,000/mo)
+                          Starter Office SLA — 2–10 PCs (₦350,000/mo)
                         </option>
                         <option value="Growth Department SLA">
-                          Growth Department SLA (₦300,000/mo)
+                          Growth Department SLA — 10–20 PCs (₦600,000/mo)
                         </option>
                         <option value="Enterprise Managed SLA">
-                          Enterprise Managed SLA (₦550,000/mo)
+                          Enterprise Managed SLA — 21+ PCs (Custom / Talk to Us)
                         </option>
                         <option value="7-Day Free Office Pilot">
                           7-Day Free Office Pilot (₦0)
@@ -2491,13 +2491,13 @@ export default function CRMPlatformPage() {
                         }}
                       >
                         <option value="Starter Office SLA">
-                          Starter Office SLA (₦150,000/mo)
+                          Starter Office SLA — 2–10 PCs (₦350,000/mo)
                         </option>
                         <option value="Growth Department SLA">
-                          Growth Department SLA (₦300,000/mo)
+                          Growth Department SLA — 10–20 PCs (₦600,000/mo)
                         </option>
                         <option value="Enterprise Managed SLA">
-                          Enterprise Managed SLA (₦550,000/mo)
+                          Enterprise Managed SLA — 21+ PCs (Custom / Talk to Us)
                         </option>
                         <option value="7-Day Free Office Pilot">
                           7-Day Free Office Pilot (₦0)
