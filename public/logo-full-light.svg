@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 64" width="340" height="64" role="img" aria-label="IT Department">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 290 64" width="290" height="64" role="img" aria-label="IT Department">
   <rect width="64" height="64" rx="14" fill="#FFFFFF"/>
   <rect x="13" y="19" width="8" height="28" rx="2" fill="#0F300F"/>
   <rect x="27" y="19" width="21" height="8" rx="2" fill="#0F300F"/>
   <rect x="33.5" y="19" width="8" height="28" rx="2" fill="#0F300F"/>
   <circle cx="51" cy="13" r="6" fill="#0F300F" stroke="#FFFFFF" stroke-width="3"/>
-  <text x="80" y="43" font-family="'Open Sauce One', 'Plus Jakarta Sans', Inter, sans-serif" font-size="31" font-weight="700" letter-spacing="-0.8" fill="#FFFFFF">IT <tspan font-weight="400" fill="#F3F3F1">Department</tspan></text>
+  <text x="78" y="43" font-family="'Open Sauce One', 'Plus Jakarta Sans', Inter, sans-serif" font-size="31" font-weight="600" letter-spacing="-0.8" fill="#FFFFFF">Department</text>
 </svg>
