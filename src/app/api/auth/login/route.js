@@ -3,10 +3,21 @@ import {
   loadStore,
   verifyPassword,
   createSessionToken,
+  getSessionCookieOptions,
+  checkRateLimit,
+  getClientIp,
 } from "../../../../lib/crmServerStore";
 
 export async function POST(request) {
-  const body = await request.json();
+  const ip = getClientIp(request);
+  if (!checkRateLimit(`login:${ip}`, 15, 600000)) {
+    return NextResponse.json(
+      { error: "Too many login attempts. Please wait a few minutes and try again." },
+      { status: 429 }
+    );
+  }
+
+  const body = await request.json().catch(() => ({}));
   const email = (body.email || "").trim().toLowerCase();
   const password = body.password || "";
 
@@ -38,12 +49,6 @@ export async function POST(request) {
     token,
   });
 
-  response.cookies.set("itd_crm_session", token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
-
+  response.cookies.set("itd_crm_session", token, getSessionCookieOptions());
   return response;
 }

@@ -4,12 +4,48 @@ import {
   saveStore,
   hashPassword,
   createSessionToken,
+  getSessionCookieOptions,
+  verifySecretEqual,
+  checkRateLimit,
+  getClientIp,
 } from "../../../../lib/crmServerStore";
 
 export async function POST(request) {
-  const body = await request.json();
-  const state = await loadStore();
+  const ip = getClientIp(request);
+  if (!checkRateLimit(`setup:${ip}`, 10, 600000)) {
+    return NextResponse.json(
+      { error: "Too many setup attempts. Please wait a few minutes." },
+      { status: 429 }
+    );
+  }
 
+  const body = await request.json().catch(() => ({}));
+  const expectedSetupKey = (process.env.SETUP_KEY || "").trim();
+  const isProd = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
+
+  if (isProd && !expectedSetupKey) {
+    return NextResponse.json(
+      {
+        error:
+          "Public setup is disabled in production. Set SETUP_KEY or ADMIN_EMAIL/ADMIN_PASSWORD in Vercel environment variables.",
+      },
+      { status: 403 }
+    );
+  }
+
+  if (expectedSetupKey) {
+    const providedKey = String(
+      body.setup_key || request.headers.get("x-setup-key") || ""
+    ).trim();
+    if (!verifySecretEqual(providedKey, expectedSetupKey)) {
+      return NextResponse.json(
+        { error: "Invalid or missing setup key." },
+        { status: 403 }
+      );
+    }
+  }
+
+  const state = await loadStore();
   const hasSuperManager = state.managers.some(
     (m) => m.role === "super_manager"
   );
@@ -28,11 +64,11 @@ export async function POST(request) {
   const phone = (body.phone || "").trim();
   const password = body.password || "";
 
-  if (!name || !email || password.length < 6) {
+  if (!name || !email || password.length < 8) {
     return NextResponse.json(
       {
         error:
-          "Please provide your full name, official email, and a password (at least 6 characters).",
+          "Please provide your full name, official email, and a password (at least 8 characters).",
       },
       { status: 400 }
     );
@@ -64,12 +100,6 @@ export async function POST(request) {
     token,
   });
 
-  response.cookies.set("itd_crm_session", token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
-
+  response.cookies.set("itd_crm_session", token, getSessionCookieOptions());
   return response;
 }

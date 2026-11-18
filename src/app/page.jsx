@@ -242,6 +242,21 @@ export default function CRMPlatformPage() {
     setTimeout(() => setCopiedKey(''), 2000);
   };
 
+  const handleDeviceApproval = async (deviceId, approvalStatus) => {
+    try {
+      const res = await fetch(`/api/crm/devices/${encodeURIComponent(deviceId)}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approval_status: approvalStatus }),
+      });
+      if (res.ok) {
+        await loadBootstrap();
+      }
+    } catch {
+      // ignore transient network errors
+    }
+  };
+
   // ============================================================================
   // Auth Handlers (Login, Logout, First-Run Setup Wizard)
   // ============================================================================
@@ -1822,6 +1837,43 @@ export default function CRMPlatformPage() {
                               <span className={`status-pill ${isWarn ? 'progress' : 'resolved'}`}>
                                 {d.health_status}
                               </span>
+                              <br />
+                              <span
+                                className={`status-pill ${
+                                  d.approval_status === 'approved'
+                                    ? 'resolved'
+                                    : d.approval_status === 'revoked'
+                                    ? 'open'
+                                    : 'progress'
+                                }`}
+                                style={{ marginTop: 4 }}
+                              >
+                                {d.approval_status === 'approved'
+                                  ? 'Approved'
+                                  : d.approval_status === 'revoked'
+                                  ? 'Revoked'
+                                  : 'Pending Approval'}
+                              </span>
+                              <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
+                                {d.approval_status !== 'approved' && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline btn-sm"
+                                    onClick={() => handleDeviceApproval(d.device_id, 'approved')}
+                                  >
+                                    Approve
+                                  </button>
+                                )}
+                                {d.approval_status !== 'revoked' && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline btn-sm"
+                                    onClick={() => handleDeviceApproval(d.device_id, 'revoked')}
+                                  >
+                                    Revoke
+                                  </button>
+                                )}
+                              </div>
                             </td>
                             <td>
                               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
@@ -2005,6 +2057,23 @@ export default function CRMPlatformPage() {
                                   ? 'Copied \u2713'
                                   : 'Copy App Code'}
                               </button>
+                              {c.enrollment_key && (
+                                <>
+                                  <br />
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline btn-sm"
+                                    style={{ marginTop: 4 }}
+                                    onClick={() =>
+                                      handleCopy(c.enrollment_key, `key-${c.company_code}`)
+                                    }
+                                  >
+                                    {copiedKey === `key-${c.company_code}`
+                                      ? 'Copied Key \u2713'
+                                      : 'Copy Enrollment Key'}
+                                  </button>
+                                </>
+                              )}
                             </td>
                             <td>
                               <strong style={{ fontSize: '0.96rem' }}>{c.name}</strong>

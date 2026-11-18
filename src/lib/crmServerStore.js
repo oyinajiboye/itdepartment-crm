@@ -3,9 +3,28 @@ import path from "path";
 import crypto from "crypto";
 import { Pool } from "pg";
 
-const SESSION_SECRET =
-  process.env.CRM_SESSION_SECRET ||
-  "itdepartment-ng-prod-hmac-secret-key-2026";
+const DEV_EPHEMERAL_SECRET = crypto.randomBytes(32).toString("hex");
+
+function getSessionSecret() {
+  const configured = (process.env.CRM_SESSION_SECRET || "").trim();
+  if (configured.length >= 16) return configured;
+  if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+    throw new Error(
+      "CRM_SESSION_SECRET (at least 16 characters) must be set in production."
+    );
+  }
+  return DEV_EPHEMERAL_SECRET;
+}
+
+export function getSessionCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL),
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  };
+}
 
 const DATABASE_URL =
   process.env.DATABASE_URL ||
@@ -81,6 +100,63 @@ export function verifyPassword(password, storedHash) {
   return crypto.timingSafeEqual(derived, keyBuf);
 }
 
+export function generateEnrollmentKey() {
+  return crypto.randomBytes(12).toString("hex").toUpperCase();
+}
+
+export function generateDeviceToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+export function hashDeviceToken(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+export function verifySecretEqual(a, b) {
+  const bufA = Buffer.from(String(a || ""), "utf8");
+  const bufB = Buffer.from(String(b || ""), "utf8");
+  if (bufA.length === 0 || bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+const rateBuckets = new Map();
+
+export function checkRateLimit(key, maxHits = 20, windowMs = 600000) {
+  const now = Date.now();
+  const bucket = (rateBuckets.get(key) || []).filter((ts) => now - ts < windowMs);
+  if (bucket.length >= maxHits) {
+    rateBuckets.set(key, bucket);
+    return false;
+  }
+  bucket.push(now);
+  rateBuckets.set(key, bucket);
+  return true;
+}
+
+export function getClientIp(request) {
+  const fwd = request.headers.get("x-forwarded-for") || "";
+  return fwd.split(",")[0].trim() || request.headers.get("x-real-ip") || "unknown";
+}
+
+export function verifyDeviceRequest(request, state, deviceId) {
+  const token = (request.headers.get("x-device-token") || "").trim();
+  if (!token || !deviceId) {
+    return { ok: false, status: 401, error: "Missing device authentication token." };
+  }
+  const device = (state.devices || []).find((d) => String(d.device_id) === String(deviceId));
+  if (!device || !device.device_token_hash) {
+    return { ok: false, status: 401, error: "Device is not enrolled. Please re-enroll with your Company Code and Enrollment Key." };
+  }
+  const presentedHash = hashDeviceToken(token);
+  if (!verifySecretEqual(presentedHash, device.device_token_hash)) {
+    return { ok: false, status: 401, error: "Invalid device token." };
+  }
+  if (device.approval_status === "revoked") {
+    return { ok: false, status: 403, error: "This device has been revoked by your IT Manager." };
+  }
+  return { ok: true, device };
+}
+
 export function createSessionToken(manager) {
   const payload = {
     id: manager.id,
@@ -93,7 +169,7 @@ export function createSessionToken(manager) {
     "base64url"
   );
   const signature = crypto
-    .createHmac("sha256", SESSION_SECRET)
+    .createHmac("sha256", getSessionSecret())
     .update(base64Payload)
     .digest("base64url");
   return `${base64Payload}.${signature}`;
@@ -102,11 +178,16 @@ export function createSessionToken(manager) {
 export function verifySessionToken(token) {
   if (!token || typeof token !== "string" || !token.includes(".")) return null;
   const [base64Payload, signature] = token.split(".");
-  const expectedSig = crypto
-    .createHmac("sha256", SESSION_SECRET)
-    .update(base64Payload)
-    .digest("base64url");
-  if (signature !== expectedSig) return null;
+  let expectedSig;
+  try {
+    expectedSig = crypto
+      .createHmac("sha256", getSessionSecret())
+      .update(base64Payload)
+      .digest("base64url");
+  } catch {
+    return null;
+  }
+  if (!verifySecretEqual(signature, expectedSig)) return null;
   try {
     const payload = JSON.parse(
       Buffer.from(base64Payload, "base64url").toString("utf8")
@@ -138,17 +219,11 @@ export async function getAuthenticatedUser(request) {
       String(m.id) === String(session.id) ||
       m.email.toLowerCase() === String(session.email).toLowerCase()
   );
-  if (manager) {
-    const { password_hash, ...safeManager } = manager;
-    return safeManager;
+  if (!manager || manager.status === "suspended") {
+    return null;
   }
-  return {
-    id: session.id,
-    email: session.email,
-    name: session.name,
-    role: session.role,
-    status: "active",
-  };
+  const { password_hash, ...safeManager } = manager;
+  return safeManager;
 }
 
 function createEmptyStore() {
@@ -223,6 +298,7 @@ async function ensurePostgresSchema(pool) {
         admin_contact TEXT NOT NULL DEFAULT '',
         domain_name TEXT NOT NULL DEFAULT '',
         ssl_status TEXT NOT NULL DEFAULT 'Active (Valid)',
+        enrollment_key TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL
       );
 
@@ -241,6 +317,8 @@ async function ensurePostgresSchema(pool) {
         agent_version TEXT NOT NULL DEFAULT '1.2.0',
         health_status TEXT NOT NULL DEFAULT 'Healthy',
         status TEXT NOT NULL DEFAULT 'online',
+        approval_status TEXT NOT NULL DEFAULT 'pending',
+        device_token_hash TEXT NOT NULL DEFAULT '',
         last_seen TEXT NOT NULL
       );
 
@@ -295,6 +373,10 @@ async function ensurePostgresSchema(pool) {
         assigned_to TEXT,
         created_at TEXT NOT NULL
       );
+
+      ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS enrollment_key TEXT NOT NULL DEFAULT '';
+      ALTER TABLE crm_devices ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending';
+      ALTER TABLE crm_devices ADD COLUMN IF NOT EXISTS device_token_hash TEXT NOT NULL DEFAULT '';
     `);
     schemaInitialized = true;
   } finally {
@@ -398,12 +480,15 @@ async function saveToPostgres(pool, state) {
     }
 
     for (const c of state.companies || []) {
+      if (!c.enrollment_key) {
+        c.enrollment_key = generateEnrollmentKey();
+      }
       await client.query(
         `INSERT INTO crm_companies (
            id, company_code, name, industry, plan_tier, monthly_retainer, max_pcs,
            onsite_visits_used, onsite_visits_quota, assigned_manager_id,
-           ceo_contact, hr_contact, admin_contact, domain_name, ssl_status, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+           ceo_contact, hr_contact, admin_contact, domain_name, ssl_status, enrollment_key, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          ON CONFLICT (company_code) DO UPDATE SET
            name = EXCLUDED.name,
            industry = EXCLUDED.industry,
@@ -417,7 +502,8 @@ async function saveToPostgres(pool, state) {
            hr_contact = EXCLUDED.hr_contact,
            admin_contact = EXCLUDED.admin_contact,
            domain_name = EXCLUDED.domain_name,
-           ssl_status = EXCLUDED.ssl_status`,
+           ssl_status = EXCLUDED.ssl_status,
+           enrollment_key = CASE WHEN crm_companies.enrollment_key = '' THEN EXCLUDED.enrollment_key ELSE crm_companies.enrollment_key END`,
         [
           String(c.id || c.company_code),
           (c.company_code || "").toUpperCase(),
@@ -434,6 +520,7 @@ async function saveToPostgres(pool, state) {
           c.admin_contact || "",
           c.domain_name || "",
           c.ssl_status || "Active (Valid)",
+          c.enrollment_key,
           c.created_at || new Date().toISOString(),
         ]
       );
@@ -444,8 +531,8 @@ async function saveToPostgres(pool, state) {
         `INSERT INTO crm_devices (
            device_id, company_code, employee_name, department, phone, hostname,
            os_version, sysinfo, remote_id, rustdesk_id, ip_address, agent_version,
-           health_status, status, last_seen
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+           health_status, status, approval_status, device_token_hash, last_seen
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          ON CONFLICT (device_id) DO UPDATE SET
            company_code = EXCLUDED.company_code,
            employee_name = EXCLUDED.employee_name,
@@ -460,6 +547,8 @@ async function saveToPostgres(pool, state) {
            agent_version = EXCLUDED.agent_version,
            health_status = EXCLUDED.health_status,
            status = EXCLUDED.status,
+           approval_status = EXCLUDED.approval_status,
+           device_token_hash = CASE WHEN EXCLUDED.device_token_hash <> '' THEN EXCLUDED.device_token_hash ELSE crm_devices.device_token_hash END,
            last_seen = EXCLUDED.last_seen`,
         [
           String(d.device_id),
@@ -476,6 +565,8 @@ async function saveToPostgres(pool, state) {
           d.agent_version || "1.2.0",
           d.health_status || "Healthy",
           d.status || "online",
+          d.approval_status || "pending",
+          d.device_token_hash || "",
           d.last_seen || new Date().toISOString(),
         ]
       );
@@ -580,14 +671,31 @@ async function saveToPostgres(pool, state) {
 // =============================================================================
 // Unified Async Store API (PostgreSQL primary -> Local Persistent fallback)
 // =============================================================================
+function ensureCompanyEnrollmentKeys(state) {
+  let changed = false;
+  for (const c of state.companies || []) {
+    if (!c.enrollment_key) {
+      c.enrollment_key = generateEnrollmentKey();
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 export async function loadStore() {
   const pool = getPgPool();
   if (pool) {
-    try {
-      return await loadFromPostgres(pool);
-    } catch (err) {
-      console.error("PostgreSQL load error, falling back to local store:", err);
+    const state = await loadFromPostgres(pool);
+    if (ensureCompanyEnrollmentKeys(state)) {
+      await saveToPostgres(pool, state);
     }
+    return state;
+  }
+
+  if (process.env.VERCEL) {
+    throw new Error(
+      "DATABASE_URL is required in production (Vercel). Refusing to use ephemeral /tmp storage."
+    );
   }
 
   const storeFile = getLocalStorePath();
@@ -596,6 +704,9 @@ export async function loadStore() {
       const raw = fs.readFileSync(storeFile, "utf8");
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.managers)) {
+        if (ensureCompanyEnrollmentKeys(parsed)) {
+          await saveStore(parsed);
+        }
         return parsed;
       }
     }
@@ -610,12 +721,14 @@ export async function loadStore() {
 export async function saveStore(state) {
   const pool = getPgPool();
   if (pool) {
-    try {
-      await saveToPostgres(pool, state);
-      return state;
-    } catch (err) {
-      console.error("PostgreSQL save error, writing to local store:", err);
-    }
+    await saveToPostgres(pool, state);
+    return state;
+  }
+
+  if (process.env.VERCEL) {
+    throw new Error(
+      "DATABASE_URL is required in production (Vercel). Refusing to write to ephemeral /tmp storage."
+    );
   }
 
   const storeFile = getLocalStorePath();
@@ -630,6 +743,12 @@ export async function saveStore(state) {
 export function sanitizeStateForUser(state, user) {
   const safeManagers = (state.managers || []).map(
     ({ password_hash, ...rest }) => rest
+  );
+  const safeDevices = (state.devices || []).map(
+    ({ device_token_hash, ...rest }) => ({
+      ...rest,
+      approval_status: rest.approval_status || "pending",
+    })
   );
 
   if (!user) {
@@ -648,7 +767,7 @@ export function sanitizeStateForUser(state, user) {
     return {
       managers: safeManagers,
       companies: state.companies || [],
-      devices: state.devices || [],
+      devices: safeDevices,
       fix_logs: state.fix_logs || [],
       tickets: state.tickets || [],
       hr_web_tasks: state.hr_web_tasks || [],
@@ -664,7 +783,7 @@ export function sanitizeStateForUser(state, user) {
   return {
     managers: safeManagers.filter((m) => String(m.id) === String(user.id)),
     companies: assignedCompanies,
-    devices: (state.devices || []).filter((d) =>
+    devices: safeDevices.filter((d) =>
       allowedCodes.has(d.company_code)
     ),
     fix_logs: (state.fix_logs || []).filter((f) =>

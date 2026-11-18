@@ -1,20 +1,54 @@
 import { NextResponse } from "next/server";
-import { loadStore, saveStore } from "../../../lib/crmServerStore";
+import {
+  loadStore,
+  saveStore,
+  generateDeviceToken,
+  hashDeviceToken,
+  verifySecretEqual,
+  checkRateLimit,
+  getClientIp,
+} from "../../../lib/crmServerStore";
 
 export async function POST(request) {
-  const body = await request.json();
+  const ip = getClientIp(request);
+  if (!checkRateLimit(`enroll:${ip}`, 15, 600000)) {
+    return NextResponse.json(
+      { error: "Too many enrollment attempts. Please wait a few minutes and try again." },
+      { status: 429 }
+    );
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const deviceId = String(body.device_id || "").trim();
+  const code = String(body.company_code || "").trim().toUpperCase();
+  const enrollmentKey = String(body.enrollment_key || "").trim().toUpperCase();
+
+  if (!deviceId || !code || !enrollmentKey) {
+    return NextResponse.json(
+      { error: "device_id, company_code, and enrollment_key are required." },
+      { status: 400 }
+    );
+  }
+
   const state = await loadStore();
-  const code = (body.company_code || "ITD-UNASSIGNED").trim().toUpperCase();
-  const company = state.companies.find(
+  const company = (state.companies || []).find(
     (c) => c.company_code.toUpperCase() === code
   );
   if (!company) {
     return NextResponse.json(
-      { error: `Company Code '${code}' not found in CRM` },
+      { error: `Company Code '${code}' not found in CRM.` },
       { status: 404 }
     );
   }
-  const manager = state.managers.find(
+
+  if (!verifySecretEqual(enrollmentKey, (company.enrollment_key || "").toUpperCase())) {
+    return NextResponse.json(
+      { error: "Invalid Enrollment Key for this Company Code." },
+      { status: 401 }
+    );
+  }
+
+  const manager = (state.managers || []).find(
     (m) => String(m.id) === String(company.assigned_manager_id)
   );
   const remoteId = body.remote_id || body.rustdesk_id || "";
@@ -22,8 +56,17 @@ export async function POST(request) {
     body.sysinfo ||
     `${body.os_version || "Windows 11 Pro"} (${body.hostname || "WIN-LAPTOP"})`;
 
+  const existingIdx = (state.devices || []).findIndex(
+    (d) => d.device_id === deviceId
+  );
+  const existing = existingIdx >= 0 ? state.devices[existingIdx] : null;
+
+  const deviceToken = generateDeviceToken();
+  const approvalStatus =
+    existing && existing.approval_status === "approved" ? "approved" : "pending";
+
   const deviceRecord = {
-    device_id: body.device_id,
+    device_id: deviceId,
     company_code: company.company_code,
     employee_name: body.employee_name || body.hostname || "Employee",
     department: body.department || "General",
@@ -33,16 +76,15 @@ export async function POST(request) {
     sysinfo,
     remote_id: remoteId,
     rustdesk_id: remoteId,
-    ip_address: body.ip_address || "0.0.0.0",
-    agent_version: body.agent_version || "1.2.0",
+    ip_address: body.ip_address || ip,
+    agent_version: body.agent_version || "1.3.0",
     health_status: body.health_status || "Healthy",
     status: "online",
+    approval_status: approvalStatus,
+    device_token_hash: hashDeviceToken(deviceToken),
     last_seen: new Date().toISOString(),
   };
 
-  const existingIdx = state.devices.findIndex(
-    (d) => d.device_id === body.device_id
-  );
   if (existingIdx >= 0) {
     state.devices[existingIdx] = deviceRecord;
   } else {
@@ -50,13 +92,16 @@ export async function POST(request) {
   }
   await saveStore(state);
 
+  const { device_token_hash, ...safeDevice } = deviceRecord;
   return NextResponse.json({
     enrolled: true,
+    device_token: deviceToken,
+    approval_status: approvalStatus,
     company_code: company.company_code,
     company_name: company.name,
     assigned_manager_id: company.assigned_manager_id,
     assigned_it_manager: manager ? manager.name : "IT Operations Manager",
     assigned_manager_name: manager ? manager.name : "IT Operations Manager",
-    device: deviceRecord,
+    device: safeDevice,
   });
 }

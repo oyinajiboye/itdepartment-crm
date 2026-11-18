@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { loadStore, saveStore } from "../../../../lib/crmServerStore";
+import {
+  loadStore,
+  saveStore,
+  checkRateLimit,
+  getClientIp,
+} from "../../../../lib/crmServerStore";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +17,13 @@ export async function OPTIONS() {
 }
 
 export async function POST(request) {
+  const ip = getClientIp(request);
+  if (!checkRateLimit(`pilot:${ip}`, 10, 600000)) {
+    return NextResponse.json(
+      { ok: false, error: "Too many submissions. Please try again later." },
+      { status: 429, headers: CORS_HEADERS }
+    );
+  }
   try {
     const body = await request.json();
     const payload = {
@@ -70,3 +82,4 @@ export async function POST(request) {
     );
   }
 }
+

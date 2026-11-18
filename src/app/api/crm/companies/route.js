@@ -3,6 +3,7 @@ import {
   loadStore,
   saveStore,
   getAuthenticatedUser,
+  generateEnrollmentKey,
 } from "../../../../lib/crmServerStore";
 
 export async function POST(request) {
@@ -59,6 +60,7 @@ export async function POST(request) {
     admin_contact: (body.admin_contact || body.hr_contact || "").trim(),
     domain_name: (body.domain_name || "").trim(),
     ssl_status: body.ssl_status || "Active (Valid)",
+    enrollment_key: generateEnrollmentKey(),
     created_at: new Date().toISOString(),
   };
 

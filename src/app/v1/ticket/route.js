@@ -1,50 +1,55 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { loadStore, saveStore } from "../../../lib/crmServerStore";
+import {
+  loadStore,
+  saveStore,
+  verifyDeviceRequest,
+  checkRateLimit,
+  getClientIp,
+} from "../../../lib/crmServerStore";
 
 export async function POST(request) {
-  const body = await request.json();
+  const ip = getClientIp(request);
+  if (!checkRateLimit(`ticket:${ip}`, 30, 600000)) {
+    return NextResponse.json(
+      { error: "Too many ticket requests. Please wait a few minutes." },
+      { status: 429 }
+    );
+  }
+
+  const body = await request.json().catch(() => ({}));
   const state = await loadStore();
-  const code = (body.company_code || "UNASSIGNED").trim().toUpperCase();
-  const company = state.companies.find(
+
+  const auth = verifyDeviceRequest(request, state, body.device_id);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const device = auth.device;
+  const code = (device.company_code || body.company_code || "UNASSIGNED")
+    .trim()
+    .toUpperCase();
+  const company = (state.companies || []).find(
     (c) => c.company_code.toUpperCase() === code
   );
   const assignedTo = company ? company.assigned_manager_id : null;
-  const ticketNum = 900 + state.tickets.length + 1;
-  const ticketId = `ITD-2026-${ticketNum}`;
   const now = new Date().toISOString();
-  const remoteId = body.remote_id || body.rustdesk_id || "";
+  const suffix = crypto.randomBytes(3).toString("hex").toUpperCase();
+  const ticketId = `ITD-${new Date().getFullYear()}-${suffix}`;
+  const remoteId = body.remote_id || body.rustdesk_id || device.remote_id || "";
   const employeeName =
-    body.name || body.employee_name || body.hostname || "Employee";
+    body.name || body.employee_name || device.employee_name || "Employee";
   const problem =
-    body.problem || body.issue_summary || "Support request from Windows AI App";
+    body.problem || body.issue_summary || "Support request from Windows Assistant";
 
-  if (body.device_id) {
-    const devIdx = state.devices.findIndex(
-      (d) => d.device_id === body.device_id
-    );
-    const deviceRecord = {
-      device_id: body.device_id,
-      company_code: code,
-      employee_name: employeeName,
-      department: body.department || "General",
-      phone: body.phone || "",
-      hostname: body.hostname || "WIN-LAPTOP",
-      os_version: body.os_version || "Windows 11 Pro",
-      sysinfo: body.sysinfo || "Windows 11 Pro",
-      remote_id: remoteId,
-      rustdesk_id: remoteId,
-      ip_address: body.ip_address || "0.0.0.0",
-      agent_version: body.agent_version || "2.4.0",
-      health_status: "Healthy",
-      status: "online",
-      last_seen: now,
-    };
-    if (devIdx >= 0) {
-      state.devices[devIdx] = { ...state.devices[devIdx], ...deviceRecord };
-    } else {
-      state.devices.unshift(deviceRecord);
-    }
-  }
+  device.employee_name = employeeName;
+  device.department = body.department || device.department || "General";
+  device.phone = body.phone || device.phone || "";
+  device.remote_id = remoteId;
+  device.rustdesk_id = remoteId;
+  device.sysinfo = body.sysinfo || device.sysinfo || "";
+  device.status = "online";
+  device.last_seen = now;
 
   const ticket = {
     id: ticketId,
@@ -52,12 +57,12 @@ export async function POST(request) {
     created: now,
     created_at: now,
     company_code: code,
-    device_id: body.device_id,
+    device_id: device.device_id,
     name: employeeName,
     employee_name: employeeName,
-    department: body.department || "General",
-    phone: body.phone || "",
-    hostname: body.hostname || "WIN-LAPTOP",
+    department: device.department,
+    phone: device.phone,
+    hostname: body.hostname || device.hostname || "WIN-LAPTOP",
     remote_id: remoteId,
     rustdesk_id: remoteId,
     problem,
@@ -75,11 +80,10 @@ export async function POST(request) {
   await saveStore(state);
 
   return NextResponse.json({
-    ticket_id: ticketNum,
+    ticket_id: ticketId,
     ticket_code: ticketId,
     status: "open",
     assigned_to: assignedTo,
     created_at: now,
   });
 }
-
