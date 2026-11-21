@@ -374,6 +374,22 @@ async function ensurePostgresSchema(pool) {
         created_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS crm_meetings (
+        id TEXT PRIMARY KEY,
+        company_code TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        employee_name TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'room',
+        attendees_json TEXT NOT NULL DEFAULT '[]',
+        audio_url TEXT NOT NULL DEFAULT '',
+        transcript TEXT NOT NULL DEFAULT '',
+        minutes_json TEXT NOT NULL DEFAULT '{}',
+        sent_to_json TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'completed',
+        created_at TEXT NOT NULL
+      );
+
       ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS enrollment_key TEXT NOT NULL DEFAULT '';
       ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS assistant_enabled BOOLEAN NOT NULL DEFAULT TRUE;
       ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS meetings_enabled BOOLEAN NOT NULL DEFAULT TRUE;
@@ -398,6 +414,7 @@ async function loadFromPostgres(pool) {
       fixRes,
       tktRes,
       taskRes,
+      meetRes,
       setRes,
     ] = await Promise.all([
       client.query("SELECT * FROM crm_managers ORDER BY created_at ASC"),
@@ -408,6 +425,7 @@ async function loadFromPostgres(pool) {
       ),
       client.query("SELECT * FROM crm_tickets ORDER BY created DESC LIMIT 200"),
       client.query("SELECT * FROM crm_hr_web_tasks ORDER BY created_at DESC"),
+      client.query("SELECT * FROM crm_meetings ORDER BY created_at DESC LIMIT 100"),
       client.query(
         "SELECT value FROM crm_settings WHERE key = 'onboarding_completed'"
       ),
@@ -433,6 +451,7 @@ async function loadFromPostgres(pool) {
       fix_logs: fixRes.rows,
       tickets: tktRes.rows,
       hr_web_tasks: taskRes.rows,
+      meetings: meetRes.rows,
       onboarding_completed: onboardingCompleted,
     };
   } finally {
@@ -658,6 +677,37 @@ async function saveToPostgres(pool, state) {
           h.status || "Pending",
           h.assigned_to || null,
           h.created_at || new Date().toISOString(),
+        ]
+      );
+    }
+
+    for (const mt of state.meetings || []) {
+      await client.query(
+        `INSERT INTO crm_meetings (
+           id, company_code, device_id, employee_name, title, mode,
+           attendees_json, audio_url, transcript, minutes_json, sent_to_json, status, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT (id) DO UPDATE SET
+           title = EXCLUDED.title,
+           attendees_json = EXCLUDED.attendees_json,
+           transcript = EXCLUDED.transcript,
+           minutes_json = EXCLUDED.minutes_json,
+           sent_to_json = EXCLUDED.sent_to_json,
+           status = EXCLUDED.status`,
+        [
+          String(mt.id),
+          (mt.company_code || "").toUpperCase(),
+          String(mt.device_id || ""),
+          mt.employee_name || "",
+          mt.title || "Meeting",
+          mt.mode || "room",
+          typeof mt.attendees_json === "string" ? mt.attendees_json : JSON.stringify(mt.attendees || []),
+          mt.audio_url || "",
+          mt.transcript || "",
+          typeof mt.minutes_json === "string" ? mt.minutes_json : JSON.stringify(mt.minutes || {}),
+          typeof mt.sent_to_json === "string" ? mt.sent_to_json : JSON.stringify(mt.sent_to || []),
+          mt.status || "completed",
+          mt.created_at || new Date().toISOString(),
         ]
       );
     }
