@@ -375,6 +375,9 @@ async function ensurePostgresSchema(pool) {
       );
 
       ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS enrollment_key TEXT NOT NULL DEFAULT '';
+      ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS assistant_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS meetings_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS monthly_ai_quota INTEGER NOT NULL DEFAULT 300;
       ALTER TABLE crm_devices ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending';
       ALTER TABLE crm_devices ADD COLUMN IF NOT EXISTS device_token_hash TEXT NOT NULL DEFAULT '';
     `);
